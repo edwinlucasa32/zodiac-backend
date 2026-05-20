@@ -1,6 +1,7 @@
 const express = require('express');
 const cors = require('cors');
 const { Pool } = require('pg');
+const Groq = require('groq-sdk');
 
 const app = express();
 app.use(cors());
@@ -12,6 +13,13 @@ app.use(express.json());
 const pool = new Pool({
     connectionString: process.env.DATABASE_URL,
     ssl: { rejectUnauthorized: false }
+});
+
+// ==================================================
+// CONFIGURACIÓN DE GROQ (ASISTENTE IA)
+// ==================================================
+const groq = new Groq({
+    apiKey: process.env.GROQ_API_KEY
 });
 
 // ==================================================
@@ -91,6 +99,30 @@ app.post('/api/compras', async (req, res) => {
 });
 
 // ==================================================
+// GUARDAR PAGO PENDIENTE (PAGO MÓVIL / TRANSFERENCIA)
+// ==================================================
+app.post('/api/pagos-pendientes', async (req, res) => {
+    const { compra_id, user_id, referencia, banco_origen, telefono_cliente, estado } = req.body;
+    
+    console.log("📝 Registrando pago pendiente:", { compra_id, user_id, referencia, banco_origen, telefono_cliente });
+    
+    try {
+        const result = await pool.query(
+            `INSERT INTO pagos_pendientes (compra_id, user_id, referencia, banco_origen, telefono_cliente, estado) 
+             VALUES ($1, $2, $3, $4, $5, $6) RETURNING id`,
+            [compra_id, user_id, referencia, banco_origen, telefono_cliente, estado || 'pendiente']
+        );
+        
+        console.log(`✅ Pago pendiente registrado con ID: ${result.rows[0].id}`);
+        res.json({ success: true, id: result.rows[0].id });
+        
+    } catch (error) {
+        console.error("❌ Error al guardar pago pendiente:", error.message);
+        res.status(400).json({ success: false, error: error.message });
+    }
+});
+
+// ==================================================
 // OBTENER COMPRAS DE UN USUARIO
 // ==================================================
 app.get('/api/compras/:userId', async (req, res) => {
@@ -111,14 +143,57 @@ app.get('/api/compras/:userId', async (req, res) => {
 });
 
 // ==================================================
+// CHAT CON GROQ (ASISTENTE DE IA)
+// ==================================================
+app.post('/api/chat', async (req, res) => {
+    const { message, history } = req.body;
+    
+    if (!message) {
+        return res.status(400).json({ error: 'No se proporcionó ningún mensaje.' });
+    }
+    
+    try {
+        // Construir el historial de la conversación
+        const messages = [
+            {
+                role: 'system',
+                content: `Eres un asistente virtual amigable y servicial para "ZODIAC WEAR", una tienda de ropa con temática zodiacal.
+Tu objetivo es ayudar a los clientes con información sobre productos (Suéteres y Camisas de los 12 signos),
+guiarlos en el proceso de compra (agregar al carrito, pagar) y resolver sus dudas generales.
+Hablas de manera clara, concisa y siempre en el contexto de la tienda.`
+            },
+            ...(history || []),
+            { role: 'user', content: message }
+        ];
+        
+        const chatCompletion = await groq.chat.completions.create({
+            messages: messages,
+            model: 'llama-3.1-8b-instant',
+            temperature: 0.7,
+            max_tokens: 1024,
+        });
+        
+        const aiResponse = chatCompletion.choices[0]?.message?.content || 'Lo siento, no pude procesar tu solicitud.';
+        
+        res.json({ response: aiResponse });
+        
+    } catch (error) {
+        console.error('Error al comunicarse con Groq:', error);
+        res.status(500).json({ error: 'Error interno del servidor de chat.' });
+    }
+});
+
+// ==================================================
 // INICIAR SERVIDOR
 // ==================================================
-const PORT = process.env.PORT || 3000;
+const PORT = process.env.PORT || 8080;
 app.listen(PORT, '0.0.0.0', () => {
     console.log(`🚀 Servidor corriendo en el puerto: ${PORT}`);
     console.log(`📋 Endpoints:`);
     console.log(`   POST /api/registro`);
     console.log(`   POST /api/login`);
     console.log(`   POST /api/compras`);
+    console.log(`   POST /api/pagos-pendientes`);
     console.log(`   GET  /api/compras/:userId`);
+    console.log(`   POST /api/chat (🤖 Asistente IA)`);
 });
