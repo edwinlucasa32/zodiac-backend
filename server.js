@@ -142,6 +142,7 @@ app.get('/api/compras/:userId', async (req, res) => {
     }
 });
 
+// ==================================================
 // CHAT CON GROQ (ASISTENTE DE IA)
 // ==================================================
 app.post('/api/chat', async (req, res) => {
@@ -151,19 +152,43 @@ app.post('/api/chat', async (req, res) => {
         return res.status(400).json({ error: 'No se proporcionó ningún mensaje.' });
     }
     
-    // Crear un texto con los precios REALES (en dólares) a partir de los productos enviados
+    // Manejar el caso de que no lleguen productos (por si el frontend no los envía)
     let listaPreciosTexto = "";
-    if (productos && productos.length > 0) {
+    if (productos && Array.isArray(productos) && productos.length > 0) {
         listaPreciosTexto = "📋 **Lista de productos y precios REALES de la tienda:**\n";
         productos.forEach(p => {
             let precioDolares = (p.precio / 100).toFixed(2);
             listaPreciosTexto += `- ${p.nombre}: US$${precioDolares}\n`;
         });
     } else {
-        listaPreciosTexto = "No se recibió la lista de productos. Usa solo los precios que están en la tienda.";
+        // Si no hay productos, usar la lista por defecto (para que al menos funcione)
+        listaPreciosTexto = `📋 **Productos de la tienda (precios en dólares):**
+- Suéter Aries: US$13.90
+- Suéter Tauro: US$13.90
+- Suéter Géminis: US$12.90
+- Suéter Cáncer: US$13.90
+- Suéter Leo: US$13.90
+- Suéter Virgo: US$14.90
+- Suéter Libra: US$12.90
+- Suéter Escorpio: US$12.90
+- Suéter Sagitario: US$14.90
+- Suéter Capricornio: US$12.90
+- Suéter Acuario: US$12.90
+- Suéter Piscis: US$12.40
+- Camisa Aries: US$11.90
+- Camisa Tauro: US$10.90
+- Camisa Géminis: US$10.90
+- Camisa Cáncer: US$10.90
+- Camisa Leo: US$12.90
+- Camisa Virgo: US$13.90
+- Camisa Libra: US$12.90
+- Camisa Escorpio: US$13.90
+- Camisa Sagitario: US$11.90
+- Camisa Capricornio: US$12.90
+- Camisa Acuario: US$11.90
+- Camisa Piscis: US$11.90`;
     }
     
-    // Construir el mensaje del sistema con los precios reales
     const messages = [
         {
             role: 'system',
@@ -171,13 +196,11 @@ app.post('/api/chat', async (req, res) => {
 
 ${listaPreciosTexto}
 
-🔴 **REGLAS OBLIGATORIAS (NO LAS INCUMPLAS):**
-
-1. Para responder sobre PRECIOS, usa EXCLUSIVAMENTE los valores de la lista de arriba. NO inventes precios.
-2. Para AGREGAR productos al carrito, responde EXACTAMENTE con este formato: [AGREGAR: Nombre exacto del producto]
-3. Si el usuario pregunta: "precio de camisa Aries y suéter Aries", calcula usando los valores de la lista.
-4. Los nombres exactos de los productos son los que aparecen en la lista.
-5. Puedes agregar UN producto por mensaje.`
+🔴 **REGLAS OBLIGATORIAS:**
+1. Usa EXCLUSIVAMENTE los precios de la lista de arriba. NO inventes precios.
+2. Para AGREGAR productos al carrito, responde EXACTAMENTE con: [AGREGAR: Nombre exacto del producto]
+3. Los nombres exactos son: Suéter Aries, Suéter Tauro, Suéter Géminis, Suéter Cáncer, Suéter Leo, Suéter Virgo, Suéter Libra, Suéter Escorpio, Suéter Sagitario, Suéter Capricornio, Suéter Acuario, Suéter Piscis, y los mismos nombres pero con "Camisa" al inicio.
+4. Responde de forma AMABLE y útil.`
         },
         ...(history || []),
         { role: 'user', content: message }
@@ -187,7 +210,7 @@ ${listaPreciosTexto}
         const chatCompletion = await groq.chat.completions.create({
             messages: messages,
             model: 'llama-3.1-8b-instant',
-            temperature: 0.2,  // más bajo = más fiel a los datos, menos inventos
+            temperature: 0.2,
             max_tokens: 1024,
         });
         
