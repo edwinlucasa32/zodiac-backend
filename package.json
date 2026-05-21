@@ -1,5 +1,5 @@
 {
-  "name": "zodiac-backend",
+  "name": "zodiac-backend1",
   "version": "1.0.0",
   "description": "",
   "main": "server.js",
@@ -14,6 +14,7 @@
   "dependencies": {
     "cors": "^2.8.6",
     "express": "^5.2.1",
+    "groq-sdk": "^1.2.0",
     "pg": "^8.20.0"
   }
 }
