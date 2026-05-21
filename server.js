@@ -142,48 +142,52 @@ app.get('/api/compras/:userId', async (req, res) => {
     }
 });
 
-// ==================================================
 // CHAT CON GROQ (ASISTENTE DE IA)
 // ==================================================
 app.post('/api/chat', async (req, res) => {
-    const { message, history } = req.body;
+    const { message, history, productos } = req.body;
     
     if (!message) {
         return res.status(400).json({ error: 'No se proporcionó ningún mensaje.' });
     }
     
+    // Crear un texto con los precios REALES (en dólares) a partir de los productos enviados
+    let listaPreciosTexto = "";
+    if (productos && productos.length > 0) {
+        listaPreciosTexto = "📋 **Lista de productos y precios REALES de la tienda:**\n";
+        productos.forEach(p => {
+            let precioDolares = (p.precio / 100).toFixed(2);
+            listaPreciosTexto += `- ${p.nombre}: US$${precioDolares}\n`;
+        });
+    } else {
+        listaPreciosTexto = "No se recibió la lista de productos. Usa solo los precios que están en la tienda.";
+    }
+    
+    // Construir el mensaje del sistema con los precios reales
+    const messages = [
+        {
+            role: 'system',
+            content: `Eres un asistente virtual para "ZODIAC WEAR", una tienda de ropa con temática zodiacal.
+
+${listaPreciosTexto}
+
+🔴 **REGLAS OBLIGATORIAS (NO LAS INCUMPLAS):**
+
+1. Para responder sobre PRECIOS, usa EXCLUSIVAMENTE los valores de la lista de arriba. NO inventes precios.
+2. Para AGREGAR productos al carrito, responde EXACTAMENTE con este formato: [AGREGAR: Nombre exacto del producto]
+3. Si el usuario pregunta: "precio de camisa Aries y suéter Aries", calcula usando los valores de la lista.
+4. Los nombres exactos de los productos son los que aparecen en la lista.
+5. Puedes agregar UN producto por mensaje.`
+        },
+        ...(history || []),
+        { role: 'user', content: message }
+    ];
+    
     try {
-        // Construir el historial de la conversación
-        const messages = [
-    {
-        role: 'system',
-        content: `Eres un asistente virtual para "ZODIAC WEAR", una tienda de ropa con temática zodiacal.
-
-REGLAS IMPORTANTES:
-1. Si el usuario QUIERE AGREGAR un producto al carrito, debes responder EXACTAMENTE con este formato:
-   [AGREGAR: Nombre exacto del producto]
-   
-   Ejemplos:
-   - Usuario: "Agrega un suéter de Aries" → [AGREGAR: Suéter Aries]
-   - Usuario: "Quiero comprar una camisa de Escorpio" → [AGREGAR: Camisa Escorpio]
-   - Usuario: "Añade el suéter de Leo" → [AGREGAR: Suéter Leo]
-
-2. Si el usuario pregunta PRECIOS o información GENERAL, responde de forma normal (sin el formato especial).
-
-3. Los nombres exactos de los productos son:
-   Suéter Aries, Suéter Tauro, Suéter Géminis, Suéter Cáncer, Suéter Leo, Suéter Virgo, Suéter Libra, Suéter Escorpio, Suéter Sagitario, Suéter Capricornio, Suéter Acuario, Suéter Piscis
-   Camisa Aries, Camisa Tauro, Camisa Géminis, Camisa Cáncer, Camisa Leo, Camisa Virgo, Camisa Libra, Camisa Escorpio, Camisa Sagitario, Camisa Capricornio, Camisa Acuario, Camisa Piscis
-
-4. Puedes agregar UN producto por mensaje. Si el usuario pide varios, responde con el primero y pregunta si quiere agregar el siguiente.`
-    },
-    ...(history || []),
-    { role: 'user', content: message }
-];
-        
         const chatCompletion = await groq.chat.completions.create({
             messages: messages,
             model: 'llama-3.1-8b-instant',
-            temperature: 0.7,
+            temperature: 0.2,  // más bajo = más fiel a los datos, menos inventos
             max_tokens: 1024,
         });
         
